@@ -6,11 +6,10 @@
 
 #define flipper_targetUp 240 //degrees
 #define flipper_targetDown 320 //degrees
-#define flipper_kp 2
-#define flipper_kd 250
-#define flipper_ki 0.001
-#define RpmToRad 3.141 / 60
-#define RadToRpm 60 / 3.141
+#define flipper_kp 5
+#define flipper_kd 0
+#define flipper_ki 0
+
 
 #define cata_kp 4
 #define cata_kd 0
@@ -33,8 +32,8 @@ void initialize() {
 	pros::Motor rb_base(rb_port, pros::E_MOTOR_GEARSET_06, true, pros::E_MOTOR_ENCODER_DEGREES);
 
     //flipper
-    pros::Motor fs(fs_port, pros::E_MOTOR_GEARSET_36, false, pros::E_MOTOR_ENCODER_DEGREES);
-	pros::Motor fr(fr_port, pros::E_MOTOR_GEARSET_36, true, pros::E_MOTOR_ENCODER_DEGREES);
+    pros::Motor fs(fs_port, pros::E_MOTOR_GEARSET_18, false, pros::E_MOTOR_ENCODER_DEGREES);
+	pros::Motor fr(fr_port, pros::E_MOTOR_GEARSET_06, true, pros::E_MOTOR_ENCODER_DEGREES);
     pros::Rotation flipperrot(flipperrot_port);
     
     //cata
@@ -78,18 +77,11 @@ void opcontrol() {
 
 
     bool IntakeTargetPosUp = true;
+    int RollerPow = 127;
     float flipper_error;
     float prev_flipper_error;
     float flipper_d;
     float total_flipper_error;
-
-    //variables for 2131 transmission inverse functions
-    float TargetRollerRPM;
-    float TargetArmRPM;
-    float OmegaBP; //BP is the motor on the arm because the transmission is upside down
-    float OmegaAP; //AP is the motor on the base because the transmission is upside down
-    float TargetOmegaA;
-    float prevflipper_error;
 
     //cata motors
     pros::Motor lc(lc_port);
@@ -138,10 +130,12 @@ void opcontrol() {
         else if(master.get_digital_new_press(DIGITAL_B))
             IntakeTargetPosUp = false; //move to down position
 
-        if(master.get_digital_new_press(DIGITAL_DOWN))
-            TargetRollerRPM = -500;//roller outtake
-        else if(master.get_digital_new_press(DIGITAL_UP))
-            TargetRollerRPM = 500; //roller intake
+        if(master.get_digital(DIGITAL_DOWN))
+            RollerPow = 127;//roller outtake
+        else if(master.get_digital(DIGITAL_UP))
+            RollerPow = -127; //roller intake
+        else
+            RollerPow = 0; //roller stop
 
         int currentPos = flipperrot.get_position() / 100;
         //PID loop to get the arm to the target position
@@ -153,19 +147,10 @@ void opcontrol() {
             flipper_error = currentPos - flipper_targetDown;
 
         prev_flipper_error = flipper_error;
+        total_flipper_error += flipper_error;
 
-        TargetOmegaA = flipper_error * flipper_kp + prev_flipper_error * flipper_kd;
-
-        OmegaBP = -TargetRollerRPM / 5;
-        OmegaAP = (TargetOmegaA + 0.2 * OmegaBP) * 5;
-
-        fs.move_velocity(OmegaAP);
-        fr.move_velocity(OmegaBP);
-        
-        printf("TargetRollerRPM: %f \n", TargetRollerRPM);
-        printf("TargetOmegaA: %f \n", TargetOmegaA);
-        printf("OmegaAP: %f \n", OmegaAP);
-        printf("OmegaBP: %f \n", OmegaBP);
+        fs.move(-flipper_error * flipper_kp + total_flipper_error * flipper_ki + prev_flipper_error * flipper_kd);
+        fr.move(RollerPow);
 
         
         //updating values of these global variables
